@@ -1,0 +1,174 @@
+Resources:
+######### lambda maestro de bancos ############
+  # BankMasterLambdaRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/Lz-Governance-Boundary
+  #     ManagedPolicyArns: 
+  #       - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #       - Effect: Allow
+  #         Principal:
+  #           Service:
+  #           - lambda.amazonaws.com
+  #         Action:
+  #         - sts:AssumeRole
+          
+  # BankMasterLambdaFunction:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     FunctionName:
+  #       Fn::Sub: aws1400-lifecoach-dev-lambda-bank-master
+  #     Description: Funcion mestro de banco
+  #     Handler: index.handler
+  #     MemorySize: 512
+  #     Role: !GetAtt BankMasterLambdaRole.Arn
+  #     Timeout: 30
+  #     Runtime: nodejs12.x
+  #     Code:
+  #       ZipFile: |
+  #         exports.handler = async (event, context) => {
+  #           return {
+  #             statusCode: 501,
+  #             headers: { 'content-type': 'text/plain' },
+  #             body: 'The server does not support the functionality required to fulfill the request.',
+  #           };
+  #         };
+  #     Tags:
+  #       - Key: 'environment'
+  #         Value: 'dev'
+
+######### lambda decript  ############
+  DecriptLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/Lz-Governance-Boundary
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+          
+  DecriptLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: aws1400-lifecoach-dev-lambda-decript
+      Description: save and send credentials to finerio.
+      Handler: app.decryptLambda
+      MemorySize: 512
+      Role: !GetAtt DecriptLambdaRole.Arn
+      Timeout: 30
+      Runtime: nodejs12.x
+      Code:
+        ZipFile: |
+          exports.handler = async (event, context) => {
+            return {
+              statusCode: 501,
+              headers: { 'content-type': 'text/plain' },
+              body: 'The server does not support the functionality required to fulfill the request.',
+            };
+          };
+      Tags:
+        - Key: 'environment'
+          Value: 'dev'
+
+########### KMS CONFIG ##########################
+  myKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: An example symmetric CMK
+      EnableKeyRotation: false
+      PendingWindowInDays: 7
+      KeySpec: RSA_3072
+      KeyUsage: ENCRYPT_DECRYPT 
+      KeyPolicy:
+        Version: '2012-10-17'
+        Id: key-default-1
+        Statement:
+        - Sid: Enable IAM User Permissions
+          Effect: Allow
+          Principal:
+            AWS: arn:aws:iam::440376150360:root
+          Action: kms:*
+          Resource: '*'
+        - Sid: Allow use of the key
+          Effect: Allow
+          Principal:
+            AWS: '*'
+          Action:
+          - kms:DescribeKey
+          - kms:Encrypt
+          - kms:Decrypt
+          - kms:ReEncrypt*
+          - kms:GenerateDataKey
+          - kms:GenerateDataKeyWithoutPlaintext
+          - kms:GetPublicKey
+          Resource: '*'
+  KeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: !Sub 'alias/llave'
+      TargetKeyId: !Ref myKey
+
+#####################  API GATEWAY ####################
+
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub add-bank
+      Description: !Sub Customers API for add-bank
+
+  bank:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: RestApi
+      ParentId:
+        Fn::GetAtt:
+        - RestApi
+        - RootResourceId
+      PathPart: masterbank
+
+  EndRoute:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId:
+        Ref: RestApi
+      ParentId:
+        Ref: bank
+      PathPart: v1
+
+  SendCredentials:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref EndRoute
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+  
+  GatewayResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+      ResponseTemplates:
+        application/json: '{"message": $context.authorizer.message}'
+      ResponseType: DEFAULT_4XX
+      RestApiId:
+        Ref: RestApi
+      StatusCode: '403'
+
+        
